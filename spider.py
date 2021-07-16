@@ -3,6 +3,7 @@ import queue
 import threading
 import sys
 import multiprocessing
+import time
 from bs4 import BeautifulSoup
 
 class Spider:
@@ -37,6 +38,9 @@ class Spider:
         return links
 
     def _worker(self):
+
+        if self.in_q.qsize() == 0:
+            time.sleep(1)
 
         while self.in_q.qsize() > 0:
 

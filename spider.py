@@ -7,14 +7,16 @@ from bs4 import BeautifulSoup
 
 class Spider:
 
-    def __init__(self, domain='https://www.example.com', start_url='/', exclusive_domain=False):
+    def __init__(self, domain='https://www.example.com', start_url='/', exclusive=False, pools=2, quiet=False):
 
         self.domain = domain
         self.start_url = start_url
-        self.exclusive_domain = exclusive_domain
+        self.exclusive = exclusive
+        self.pools = pools
         self.in_q = multiprocessing.Manager().Queue()
         self.out_q = multiprocessing.Manager().Queue()
         self.processed = []
+        self.quiet = quiet
 
     def get_links(self, link):
 
@@ -28,7 +30,7 @@ class Spider:
         links = [ a.get('href') for a in s.find_all('a') ]
         links = [ link for link in links if link != None ]
 
-        if self.exclusive_domain == True:
+        if self.exclusive == True:
             # exclude any links not relative to given domain
             links = [ link for link in links if 'http' not in link ]
 
@@ -37,7 +39,13 @@ class Spider:
     def _worker(self):
 
         while self.in_q.qsize() > 0:
+
             link = self.in_q.get()
+            link = link.strip()
+
+            if not self.quiet:
+                print(link)
+                sys.stdout.flush()
 
             if link in self.processed:
                 continue
@@ -57,10 +65,10 @@ class Spider:
                 self.out_q.put({link: str(e)})
                 return {link: str(e)}
 
+            self.out_q.put({link: links})
+
             for link in links:
                 self.in_q.put(link)
-
-            self.out_q.put({link: links})
 
         return
 
@@ -70,8 +78,9 @@ class Spider:
 
         self.in_q.put(start_url)
 
-        p = multiprocessing.Pool(2)
-        p.apply_async(self._worker).get()
+        p = multiprocessing.Pool(self.pools)
+        p.apply_async(self._worker)
+
         p.close()
         p.join()
 

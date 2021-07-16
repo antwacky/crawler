@@ -18,20 +18,26 @@ The usage is as follows:
 
 ```
 usage: crawler [-h] --domain DOMAIN --starturl STARTURL [--exclusive]
+               [--processes PROCESSES] [--quiet]
 
 Crawl URL for links
 
 optional arguments:
-  -h, --help           show this help message and exit
-  --domain DOMAIN      domain to crawl
-  --starturl STARTURL  url to start with
-  --exclusive          only crawl links on the provided domain
+  -h, --help            show this help message and exit
+  --domain DOMAIN, -d DOMAIN
+                        domain to crawl
+  --starturl STARTURL, -u STARTURL
+                        url to start with
+  --exclusive, -e       only crawl links on the provided domain
+  --processes PROCESSES, -p PROCESSES
+                        processes to use
+  --quiet, -q           hide progress
 ```
 
 For example:
 
 ```
-python crawler --domain https://monzo.com --starturl / --exclusive
+python crawler --domain https://monzo.com --starturl / --exclusive --processes 2 --quiet
 ```
 Use as a package as below:
 
@@ -70,5 +76,5 @@ docker build -t crawler:latest .
 Run the container with args:
 
 ```
-docker run crawler:latest --domain https://monzo.com --starturl / --exclusive
+docker run crawler:latest --domain https://monzo.com --starturl / --exclusive --processes 2 --quiet
 ```

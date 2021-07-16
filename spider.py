@@ -1,6 +1,4 @@
 import requests
-import queue
-import threading
 import sys
 import multiprocessing
 import time
@@ -8,39 +6,46 @@ from bs4 import BeautifulSoup
 
 class Spider:
 
-    def __init__(self, domain='https://www.example.com', start_url='/', exclusive=False, pools=2, quiet=False):
+    def __init__(self, domain='https://www.example.com', start_url='/', exclusive=False, processes=2, quiet=False):
 
         self.domain = domain
         self.start_url = start_url
         self.exclusive = exclusive
-        self.pools = pools
+        self.processes = processes
         self.in_q = multiprocessing.Manager().Queue()
         self.out_q = multiprocessing.Manager().Queue()
-        self.processed = []
+        self.processed = set()
         self.quiet = quiet
 
     def get_links(self, link):
 
-        response = requests.get(link, timeout=1)
+        response = requests.get(link, timeout=15)
         html = response.text
 
         if response.status_code != 200:
             raise Exception('got http error response ' + str(response.status_code))
 
         s = BeautifulSoup(html, 'html.parser')
-        links = [ a.get('href') for a in s.find_all('a') ]
-        links = [ link for link in links if link != None ]
 
-        if self.exclusive == True:
-            # exclude any links not relative to given domain
-            links = [ link for link in links if 'http' not in link ]
+        links = [ a.get('href') for a in s.find_all('a') ]
+
+        tmp = []
+        for link in links:
+            if link != None:
+                if self.exclusive == True:
+                    # exclude any links not relative to given domain
+                    if 'http' not in link:
+                        tmp.append(link)
+                else:
+                    tmp.append(link)
+        links = tmp
 
         return links
 
     def _worker(self):
 
         if self.in_q.qsize() == 0:
-            time.sleep(1)
+            time.sleep(2)
 
         while self.in_q.qsize() > 0:
 
@@ -54,10 +59,7 @@ class Spider:
             if link in self.processed:
                 continue
 
-            self.processed.append(link)
-
-            if self.start_url not in link:
-                continue
+            self.processed.add(link)
 
             # complete relative links
             if 'http' not in link:
@@ -67,7 +69,6 @@ class Spider:
                 links = self.get_links(link)
             except Exception as e:
                 self.out_q.put({link: str(e)})
-                return {link: str(e)}
 
             self.out_q.put({link: links})
 
@@ -82,7 +83,7 @@ class Spider:
 
         self.in_q.put(start_url)
 
-        p = multiprocessing.Pool(self.pools)
+        p = multiprocessing.Pool(self.processes)
         p.apply_async(self._worker)
 
         p.close()

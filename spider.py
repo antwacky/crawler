@@ -2,6 +2,7 @@ import requests
 import queue
 import threading
 import sys
+import multiprocessing
 from bs4 import BeautifulSoup
 
 class Spider:
@@ -11,14 +12,17 @@ class Spider:
         self.domain = domain
         self.start_url = start_url
         self.exclusive_domain = exclusive_domain
+        self.in_q = multiprocessing.Manager().Queue()
+        self.out_q = multiprocessing.Manager().Queue()
+        self.processed = []
 
     def get_links(self, link):
 
-        try:
-            html = requests.get(link).text
-        except:
-            print('failed to connect to {}'.format(self.domain))
-            sys.exit(1)
+        response = requests.get(link, timeout=1)
+        html = response.text
+
+        if response.status_code != 200:
+            raise Exception('got http error response ' + str(response.status_code))
 
         s = BeautifulSoup(html, 'html.parser')
         links = [ a.get('href') for a in s.find_all('a') ]
@@ -30,39 +34,49 @@ class Spider:
 
         return links
 
-    def _worker(self, q, results):
+    def _worker(self):
 
-        while q.qsize() > 0:
-            link = q.get()
+        while self.in_q.qsize() > 0:
+            link = self.in_q.get()
 
-            if self.start_url not in link:
+            if link in self.processed:
                 continue
 
-            if link in results:
+            self.processed.append(link)
+
+            if self.start_url not in link:
                 continue
 
             # complete relative links
             if 'http' not in link:
                 link = self.domain + link
 
-            links = self.get_links(link)
-            results[link] = links
+            try:
+                links = self.get_links(link)
+            except Exception as e:
+                self.out_q.put({link: str(e)})
+                return {link: str(e)}
 
             for link in links:
-                q.put(link)
+                self.in_q.put(link)
+
+            self.out_q.put({link: links})
 
         return
 
     def crawl(self):
 
         start_url = self.domain + self.start_url
-        results = {}
 
-        q = queue.Queue()
-        q.put(start_url)
+        self.in_q.put(start_url)
 
-        t = threading.Thread(target=self._worker, args=(q, results, ))
-        t.start()
-        t.join()
+        p = multiprocessing.Pool(2)
+        p.apply_async(self._worker).get()
+        p.close()
+        p.join()
+
+        results = []
+        while self.out_q.qsize() > 0:
+            results.append(self.out_q.get())
 
         return results
